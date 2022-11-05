@@ -3866,17 +3866,7 @@
                             import tensorflow as tf
                             from loop import add_self_loops
                             from Scatter import scatter_add
-                            from tf_scatter import scatter_sum
-
-                            def remove_self_loops(edge_index: tf.Tensor,
-                                                  edge_attr = None):
-                                mask = edge_index[0] != edge_index[1]
-                                edge_index = edge_index.numpy()[:,mask.numpy()]
-                                edge_index = tf.constant(edge_index)
-                                if edge_attr is None:
-                                    return edge_index, None
-                                else:
-                                    return edge_index, edge_attr[mask]
+                            from loop import remove_self_loops
 
                             class LEConv(tf.keras.layers.Layer):
                                 def __init__(self, in_channels, out_channels, bias=True):
@@ -3901,10 +3891,10 @@
                                                                 dtype=x.dtype)
                                     edge_index, edge_weight = remove_self_loops(edge_index=edge_index, edge_attr=edge_weight)
                                     
-                                    deg = scatter_sum(edge_weight, edge_index[0], num_nodes) #+ 1e-10
+                                    deg = scatter_add(edge_weight, edge_index[0], dim=0, dim_size=num_nodes) #+ 1e-10
                                     h_tensor = tf.constant(h.numpy()[edge_index.numpy()[1]])
                                     h_j = tf.reshape(edge_weight,[-1,1]) * h_tensor
-                                    aggr_out = scatter_add(h_j, edge_index[0], dim_size=num_nodes)
+                                    aggr_out = scatter_add(h_j, edge_index[0], dim=0, dim_size=num_nodes)
                                     out = (tf.reshape(deg,[-1,1]) * self.lin1(x) + aggr_out) + self.lin2(x)
                                     edge_index = tf.cast(edge_index,dtype=tf.float32)
                                     edge_index, edge_weight = add_self_loops(edge_index, edge_weight, num_nodes=num_nodes)
@@ -3914,10 +3904,16 @@
                                                               self.out_channels)
 
 
-                            # l = LEConv(4,2)
-                            # x = tf.constant([[1,.2,3,4],[3,6,7,5]])
-                            # edge_index = tf.constant([[1,0,1],[0,1,0]])
-                            # l(x,edge_index)
+
+                            #Implementation
+                            # in_channels, out_channels = (16, 32)
+                            # edge_index = tf.constant([[0, 0, 0, 1, 2, 3], [1, 2, 3, 0, 0, 0]])
+                            # num_nodes = int(tf.reduce_max(edge_index)) + 1
+                            # x = tf.random.normal((num_nodes, in_channels))
+                            # conv = LEConv(in_channels, out_channels)
+                            # out = conv(x, edge_index)
+
+                            # print(out)
 
                                   </code>
                         </pre>
