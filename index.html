@@ -297,8 +297,14 @@
                     <a class="reference internal" href="#agnn_conv">AGNNConv</a>
                   </p>
                 </li>
+                <li>
+                  <p>
+                    <a class="reference internal" href="#lg_conv">LGConv</a>
+                  </p>
+                </li>
               </ul>
               </p>
+              
   
                 
                 <div>
@@ -3091,7 +3097,7 @@
                     </ul>
                   </dd>
                 </dl>
-                </div>
+               
                 <dl class="field-list simple">
                   <dt class="field-odd">
                     <h4><strong>Parameters</strong></h4>
@@ -4256,6 +4262,102 @@
                       </p>
                       </li> 
                       
+                    </ul>
+                  </dd>
+                </dl>
+                <div>
+                  <pre class="classes">
+                    <code>
+                      <p>class <span class="className" id="lg_conv">LGConv</span>( normalize: bool = True, **kwargs)</p>
+                    </code>
+                    <span class="preSource" data-toggle="modal" data-target="#lg_conv_code">[source]</span>
+                  </pre>
+                </div>
+                <div class="modal fade" id="lg_conv_code" tabindex="-1" role="dialog" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLongTitle"><strong>SOURCE CODE FOR LG_CONV</strong></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre>
+                          <code>  
+                            import tensorflow as tf
+                            from tensorflow.sparse import SparseTensor
+                            from num_nodes import tf_maybe_num_nodes
+                            import numpy as np
+                            from Scatter import scatter_add
+                            from loop import add_remaining_self_loops
+                            from tf_typing import Adj, OptTensor
+                            from typing import Callable, Optional, Tuple, Union
+                            from message_passing import MessagePassing
+                            from gcn_norm import gcn_norm
+
+
+                            class LGConv(MessagePassing):
+                                def __init__(self, normalize: bool = True, **kwargs):
+                                    kwargs.setdefault('aggr', 'add')
+                                    super().__init__(**kwargs)
+                                    self.normalize = normalize
+
+                                def reset_parameters(self):
+                                    pass
+                                def __call__(self, x: tf.Tensor, edge_index: Adj,
+                                            edge_weight: OptTensor = None) -> tf.Tensor:
+                                    """"""
+                                    if self.normalize and isinstance(edge_index, tf.Tensor):
+                                        out = gcn_norm(edge_index, edge_weight, x.get_shape()[self.node_dim],
+                                                      add_self_loops=False, flow=self.flow, dtype=x.dtype)
+                                        edge_index, edge_weight = out
+                                        
+                                    elif self.normalize and isinstance(edge_index, SparseTensor):
+                                        edge_index = gcn_norm(edge_index, None, x.get_shape()[self.node_dim],
+                                                              add_self_loops=False, flow=self.flow,
+                                                              dtype=x.dtype)
+
+                                    # propagate_type: (x: tf.Tensor, edge_weight: OptTensor)
+                                    out = self.propagate(edge_index, x=x, edge_weight=edge_weight,
+                                                          size=None)
+                                    out = out.numpy()   
+                                    return np.resize(out,x.get_shape()) 
+                                def message(self, x_j: tf.Tensor, edge_weight: OptTensor) -> tf.Tensor:
+                                    return x_j if edge_weight is None else tf.reshape(edge_weight,[-1, 1]) * tf.cast(x_j,dtype=tf.float32)
+
+                                def message_and_aggregate(self, adj_t: SparseTensor, x: tf.Tensor) -> tf.Tensor:
+                                    return tf.sparse.sparse_dense_matmul(adj_t, x, reduce=self.aggr)
+
+
+
+                            #Implementation
+                            # g = LGConv()
+                            # x =tf.random.normal([4, 8])
+                            # edge_index = tf.constant([[0, 1, 2, 3], [0, 0, 1, 1]])
+                            # g(x,edge_index)
+
+
+                                  </code>
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p>The Light Graph Convolution (LGC) operator from the <a href="https://arxiv.org/abs/2002.02126" target="_blank">“LightGCN: Simplifying and Powering Graph Convolution Network for Recommendation"</a> paper</p>
+                  <img class = "equationclass" src="assets/images/equation/lg_conv.PNG" alt="">
+                </div>
+                <dl class="field-list simple">
+                  <dt class="field-odd">
+                    <h4><strong>Parameters</strong></h4>
+                  </dt>
+                  <dd class="field-odd">
+                    <ul class="simple_parameter">
+                      <li>
+                        <p><strong>normalize    </strong>
+                          – If set to <mask>False</mask>, output features will not be normalized via symmetric normalization.
+                      </p>
                     </ul>
                   </dd>
                 </dl>
