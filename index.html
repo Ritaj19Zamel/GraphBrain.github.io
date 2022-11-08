@@ -302,6 +302,26 @@
                     <a class="reference internal" href="#lg_conv">LGConv</a>
                   </p>
                 </li>
+                <li>
+                  <p>
+                    <a class="reference internal" href="#cluster_conv">ClusterGCNConv</a>
+                  </p>
+                </li>
+                <li>
+                  <p>
+                    <a class="reference internal" href="#wl_cont_conv">WLConvContinuous</a>
+                  </p>
+                </li>
+                <li>
+                  <p>
+                    <a class="reference internal" href="#res_gated_conv">ResGatedGraphConv</a>
+                  </p>
+                </li>
+                <li>
+                  <p>
+                    <a class="reference internal" href="#hyper_graph_conv">HypergraphConv</a>
+                  </p>
+                </li>
               </ul>
               </p>
               
@@ -4361,6 +4381,616 @@
                     </ul>
                   </dd>
                 </dl>
+                <div>
+                  <pre class="classes">
+                    <code>
+                      <p>class <span class="className" id="cluster_conv">ClusterGCNConv</span>( in_channels: int, out_channels: int, diag_lambda: float = 0.0, add_self_loops: bool = True, bias: bool = True, **kwargs)</p>
+                    </code>
+                    <span class="preSource" data-toggle="modal" data-target="#cluster_conv_code">[source]</span>
+                  </pre>
+                </div>
+                <div class="modal fade" id="cluster_conv_code" tabindex="-1" role="dialog" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLongTitle"><strong>SOURCE CODE FOR CLUSTER_GCN_CONV</strong></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre>
+                          <code>  
+                            import tensorflow as tf 
+                            from message_passing import * 
+                            from tf_typing import Adj , OptTensor
+                            from loop import * 
+                            from tf_degree import * 
+
+                            class ClusterGCNConv(MessagePassing):
+                                r"""The ClusterGCN graph convolutional operator from the
+                                `"Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph
+                                Convolutional Networks" <https://arxiv.org/abs/1905.07953>`_ paper
+                                .. math::
+                                    \mathbf{X}^{\prime} = \left( \mathbf{\hat{A}} + \lambda \cdot
+                                    \textrm{diag}(\mathbf{\hat{A}}) \right) \mathbf{X} \mathbf{W}_1 +
+                                    \mathbf{X} \mathbf{W}_2
+                                where :math:`\mathbf{\hat{A}} = {(\mathbf{D} + \mathbf{I})}^{-1}(\mathbf{A}
+                                + \mathbf{I})`.
+                                Args:
+                                    in_channels (int): Size of each input sample, or :obj:`-1` to derive
+                                        the size from the first input(s) to the forward method.
+                                    out_channels (int): Size of each output sample.
+                                    diag_lambda (float, optional): Diagonal enhancement value
+                                        :math:`\lambda`. (default: :obj:`0.`)
+                                    add_self_loops (bool, optional): If set to :obj:`False`, will not add
+                                        self-loops to the input graph. (default: :obj:`True`)
+                                    bias (bool, optional): If set to :obj:`False`, the layer will not learn
+                                        an additive bias. (default: :obj:`True`)
+                                    **kwargs (optional): Additional arguments of
+                                        :class:`MessagePassing`.
+                                Shapes:
+                                    - **input:**
+                                      node features :math:`(|\mathcal{V}|, F_{in})`,
+                                      edge indices :math:`(2, |\mathcal{E}|)`
+                                    - **output:** node features :math:`(|\mathcal{V}|, F_{out})`
+                                """
+                                def __init__(self, in_channels: int ,out_channels : int ,
+                                            diag_lambda : float = 0. , add_self_loops : bool = True ,
+                                            bias : bool = True , **kwargs):
+                                    kwargs.setdefault('aggr' , 'add')
+                                    super().__init__(**kwargs)
+                                    
+                                    self.in_channels = in_channels
+                                    self.out_channels = out_channels
+                                    self.diag_lambda = diag_lambda
+                                    self.add_self_loops = add_self_loops
+                                    self.lin_out = tf.keras.layers.Dense(self.out_channels , input_shape=(self.in_channels,) , use_bias= bias )
+                                    self.lin_root = tf.keras.layers.Dense(self.out_channels , input_shape=(self.in_channels,) , use_bias= False )
+                                def __call__(self , x: tf.Tensor , edge_index : Adj) -> tf.Tensor:
+                                    edge_weight : OptTensor = None 
+                                    if isinstance(edge_index , tf.Tensor):
+                                        num_nodes = tf.shape(x).numpy()[0]
+                                        if self.add_self_loops : 
+                                            edge_index , _ = remove_self_loops(edge_index)
+                                            edge_index = tf.cast(edge_index , tf.int64)
+                                            edge_index , _ = add_self_loops(edge_index , num_nodes= num_nodes )
+                                            edge_index = tf.cast(edge_index , tf.int32)
+                                        row, col = edge_index[0], edge_index[1]
+                                        deg_inv = 1. / degree(col, num_nodes=num_nodes)
+                                        edge_weight = deg_inv.numpy()[col.numpy()]
+                                        out = self.propagate(edge_index , x = x ,edge_weight = edge_weight , size= None)
+                                        out = self.lin_out(out) + self.lin_root(x)
+                                        return out
+                                
+                                def __repr__(self) -> str:
+                                    return (f'{self.__class__.__name__}({self.in_channels}, '
+                                            f'{self.out_channels}, diag_lambda={self.diag_lambda})')
+                                    
+                                        
+
+                            # this is implementation: 
+
+                            # re = ClusterGCNConv(4,3)
+                            # print(re(tf.constant([[1,2,4],[4,5,5],[4,6,9],[4,8,1]]),tf.constant([[0],[0]])))
+
+                                  </code>
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p>The ClusterGCN graph convolutional operator from the  <a href="https://arxiv.org/abs/1905.07953" target="_blank">“Cluster-GCN: An Efficient Algorithm for Training Deep and Large Graph Convolutional Networks"</a> paper</p>
+                  <img class = "equationclass" src="assets/images/equation/cluster_gcn_1.PNG" alt="">
+                  <p>where</p>
+                  <img class = "equationclass" src="assets/images/equation/cluster_gcn_2.PNG" alt="">
+                </div>
+                <dl class="field-list simple">
+                  <dt class="field-odd">
+                    <h4><strong>Parameters</strong></h4>
+                  </dt>
+                  <dd class="field-odd">
+                    <ul class="simple_parameter">
+                      <li>
+                        <p><strong>in_channels   </strong>
+                          – Size of each input sample, or <mark>-1</mark> to derive the size from the first input(s) to the forward method.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>out_channels    </strong>
+                          – Size of each output sample.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>diag_lambda    </strong>
+                          – Diagonal enhancement value <strong>&lambda;</strong>.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>add_self_loops    </strong>
+                          – If set to <mark>False</mark>, will not add self-loops to the input graph.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>bias    </strong>
+                          – If set to <mark>False</mark>, the layer will not learn an additive bias.
+                      </p>
+                      </li>
+                    </ul>
+                  </dd>
+                </dl>
+                <div>
+                  <pre class="classes">
+                    <code>
+                      <p>class <span class="className" id="res_gated_conv">ResGatedGraphConv</span>( in_channels: Union[int, Tuple[int, int]], out_channels: int, act: Optional[Callable] = Sigmoid(), root_weight: bool = True, bias: bool = True, **kwargs)</p>
+                    </code>
+                    <span class="preSource" data-toggle="modal" data-target="#res_gated_conv_code">[source]</span>
+                  </pre>
+                </div>
+                <div class="modal fade" id="res_gated_conv_code" tabindex="-1" role="dialog" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLongTitle"><strong>SOURCE CODE FOR RES_GATED_GRAPH_CONV</strong></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre>
+                          <code>  
+                            from typing import Callable, Optional, Tuple, Union
+                            from tf_typing import Adj, PairTensor
+                            import numpy as np
+                            import tensorflow as tf
+                            from message_passing import MessagePassing
+                            
+                            class ResGatedGraphConv(MessagePassing):
+                                def __init__(
+                                    self,
+                                    in_channels: Union[int, Tuple[int, int]],
+                                    out_channels: int,
+                                    root_weight: bool = True,
+                                    bias: bool = True,
+                                    **kwargs,
+                                ):
+                            
+                                    kwargs.setdefault('aggr', 'add')
+                                    super().__init__(**kwargs)
+                            
+                                    self.in_channels = in_channels
+                                    self.out_channels = out_channels
+                                    self.root_weight = root_weight
+                            
+                                    if isinstance(in_channels, int):
+                                        in_channels = (in_channels, in_channels)
+                            
+                                    self.lin_key = tf.keras.layers.Dense(out_channels, input_shape=(in_channels[1],))
+                                    self.lin_query = tf.keras.layers.Dense(out_channels, input_shape=(in_channels[0],))
+                                    self.lin_value = tf.keras.layers.Dense(out_channels, input_shape=(in_channels[0],))
+                            
+                                    if root_weight:
+                                        self.lin_skip = tf.keras.layers.Dense(out_channels,input_shape=(in_channels[1],), use_bias=False)
+                                    else:
+                                        self.register_parameter('lin_skip', None)
+                            
+                                    if bias:
+                                        self.bias = tf.Variable(tf.zeros(out_channels,dtype=tf.float32))
+                                def __call__(self, x: Union[tf.Tensor, PairTensor], edge_index: Adj) -> tf.Tensor:
+                                    """"""
+                                    if isinstance(x, tf.Tensor):
+                                        x: PairTensor = (x, x)
+                            
+                                    k = self.lin_key(x[1])
+                                    q = self.lin_query(x[0])
+                                    v = self.lin_value(x[0])
+                            
+                                    # propagate_type: (k: Tensor, q: Tensor, v: Tensor)
+                                    out = self.propagate(edge_index, k=k, q=q, v=v, size=None)   
+                                    if self.root_weight:
+                                        out = np.resize(out,self.lin_skip(x[1]).get_shape())
+                                        out = tf.constant(out,dtype=self.lin_skip(x[1]).dtype)
+                                        out = out + self.lin_skip(x[1])
+                                        
+                            
+                                    if self.bias is not None:
+                                        out = out + self.bias
+                            
+                                    return out
+                            
+                                def message(self, k_i: tf.Tensor, q_j: tf.Tensor, v_j: tf.Tensor) -> tf.Tensor:
+                                    return tf.keras.activations.sigmoid(k_i + q_j) * v_j
+                                   
+                            
+                            
+                            #Implementation
+                            
+                            """
+                            x1 = tf.random.normal([4, 8])
+                            x2 = tf.random.normal([2, 32])
+                            edge_index = tf.constant([[0, 1, 2, 3], [0, 0, 1, 1]])
+                            
+                            
+                            conv = ResGatedGraphConv(8, 32)
+                            out = conv(x1, edge_index)
+                            
+                            
+                            conv = ResGatedGraphConv((8, 32), 32)
+                            out = conv((x1, x2), edge_index)
+                            """                            
+
+                                  </code>
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p>The residual gated graph convolutional operator from the  <a href="https://arxiv.org/abs/1711.07553" target="_blank">“Residual Gated Graph ConvNets"</a> paper</p>
+                  <img class = "equationclass" src="assets/images/equation/res_graph_conv_1.PNG" alt="">
+                  <p>where the gate <strong>&eta;<sub>i,j</sub></strong> is defined as</p>
+                  <img class = "equationclass" src="assets/images/equation/res_graph_conv_2.PNG" alt="">
+                  <p>with <strong>&sigma;</strong> denoting the sigmoid function.</p>
+                </div>
+                <dl class="field-list simple">
+                  <dt class="field-odd">
+                    <h4><strong>Parameters</strong></h4>
+                  </dt>
+                  <dd class="field-odd">
+                    <ul class="simple_parameter">
+                      <li>
+                        <p><strong>in_channels   </strong>
+                          – Size of each input sample, or <mark>-1</mark> to derive the size from the first input(s) to the forward method. A tuple corresponds to the sizes of source and target dimensionalities.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>out_channels    </strong>
+                          – Size of each output sample.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>act  </strong>
+                          – Gating function <strong>&sigma;</strong>.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>bias </strong>
+                          – If set to <mark>False</mark>, the layer will not learn an additive bias.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>root_weight </strong>
+                          – If set to <mark>False</mark>, the layer will not add transformed root node features to the output. 
+                      </p>
+                      </li>
+                    </ul>
+                  </dd>
+                </dl>
+                <div>
+                  <pre class="classes">
+                    <code>
+                      <p>class <span class="className" id="hyper_graph_conv">HypergraphConv</span>( in_channels, out_channels, use_attention=False, heads=1, concat=True, negative_slope=0.2, dropout=0, bias=True, **kwargs)</p>
+                    </code>
+                    <span class="preSource" data-toggle="modal" data-target="#hyper_graph_conv_code">[source]</span>
+                  </pre>
+                </div>
+                <div class="modal fade" id="hyper_graph_conv_code" tabindex="-1" role="dialog" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLongTitle"><strong>SOURCE CODE FOR HYPER_GRAPH_CONV</strong></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre>
+                          <code>  
+                            from typing import Optional
+                            import tensorflow as tf
+                            from Scatter import scatter_add
+                            import math
+                            from typing import Any
+                            from message_passing import MessagePassing
+                            from tf_softmax import softmax
+                            import numpy as np
+
+                            class HypergraphConv(MessagePassing):
+                                def __init__(self, in_channels, out_channels, use_attention=False, heads=1,
+                                            concat=True, negative_slope=0.2, dropout=0, bias=True,
+                                            **kwargs):
+                                    kwargs.setdefault('aggr', 'add')
+                                    super().__init__(flow='source_to_target', node_dim=0, **kwargs)
+
+                                    self.in_channels = in_channels
+                                    self.out_channels = out_channels
+                                    self.use_attention = use_attention
+
+                                    if self.use_attention:
+                                        self.heads = heads
+                                        self.concat = concat
+                                        self.negative_slope = negative_slope
+                                        self.dropout = dropout
+                                        self.lin = tf.keras.layers.Dense(heads * out_channels, input_shape=(in_channels,), 
+                                                                        activation=None,use_bias=False,kernel_initializer='glorot_uniform')
+                                        
+                                        self.att = tf.Variable(tf.zeros([1, heads, 2 * out_channels]),dtype=tf.float32)
+                                    else:
+                                        self.heads = 1
+                                        self.concat = True
+                                        self.lin = tf.keras.layers.Dense(out_channels, input_shape=(in_channels,), 
+                                                                        activation=None,use_bias=False,kernel_initializer='glorot_uniform')
+
+                                    if bias and concat:
+                                        self.bias = tf.Variable(tf.zeros(heads * out_channels),dtype=tf.float32)     
+                                    elif bias and not concat:
+                                        self.bias = tf.Variable(tf.zeros(out_channels),dtype=tf.float32)     
+                                def reset_parameters(self):
+                                        self.lin.reset_parameters()
+                                        if self.use_attention:
+                                            glorot(self.att)
+                                        zeros(self.bias)
+                                def __call__(self, x: tf.Tensor, hyperedge_index: tf.Tensor,
+                                            hyperedge_weight: Optional[tf.Tensor] = None,
+                                            hyperedge_attr: Optional[tf.Tensor] = None) -> tf.Tensor:
+                                    
+                                    num_nodes, num_edges = x.get_shape()[0], 0
+                                    if tf.size(hyperedge_index) > 0:
+                                        num_edges = int(tf.reduce_max(hyperedge_index[1])) + 1
+
+                                    if hyperedge_weight is None:
+                                        hyperedge_weight = tf.ones(num_edges, dtype = x.dtype)
+
+                                    x = self.lin(x)
+                                    
+                                    alpha = None
+                                    if self.use_attention:
+                                        assert hyperedge_attr is not None
+                                        x = tf.reshape(x,[-1, self.heads, self.out_channels])
+                                        hyperedge_attr = self.lin(hyperedge_attr)
+                                        hyperedge_attr = tf.reshape(hyperedge_attr,[-1, self.heads,
+                                                                            self.out_channels])
+                                        x_i = x.numpy()[hyperedge_index.numpy()[0]]
+                                        x_j = hyperedge_attr.numpy()[hyperedge_index.numpy()[1]]
+                                        alpha = tf.reduce_sum((tf.concat([x_i, x_j], axis=-1) * self.att), axis=-1)
+                                        alpha = tf.nn.leaky_relu(alpha, alpha=self.negative_slope)
+                                        alpha = softmax(alpha, hyperedge_index[0], num_nodes=x.get_shape()[0])
+                                        F_dropout = tf.keras.layers.Dropout(self.dropout)
+                                        alpha = F_dropout(alpha, training = True)
+                                    src = hyperedge_weight.numpy()[hyperedge_index.numpy()[1]]
+                                    src = tf.constant(src)
+                                    D = scatter_add(src,hyperedge_index[0], dim=0, dim_size=num_nodes)
+                                    D = 1.0 / D
+                                    D[D == float("inf")] = 0
+
+                                    B = scatter_add(tf.ones(hyperedge_index.get_shape()[1], dtype = x.dtype),
+                                                        hyperedge_index[1], dim=0, dim_size=num_edges)
+                                    B = 1.0 / B
+                                    B[B == float("inf")] = 0
+                                    
+                                    out = self.propagate(hyperedge_index, x=x, norm=B, alpha=alpha,
+                                                            size=(num_nodes, num_edges))
+                                    out = self.propagate(tf.reverse(hyperedge_index,[0]), x=out, norm=D,
+                                                            alpha=alpha, size=(num_edges, num_nodes))
+                                    
+                                    if self.concat is True:
+                                        out = tf.reshape(out,[-1, self.heads * self.out_channels])
+                                    else:
+                                        out = tf.math.reduce_mean(out,axis=1)
+
+                                    if self.bias is not None:
+                                            out = out + self.bias
+
+                                    return out
+                                def message(self, x_j: tf.Tensor, norm_i: tf.Tensor, alpha: tf.Tensor) -> tf.Tensor:
+                                        H, F = self.heads, self.out_channels
+                                        
+                                        norm_i = np.resize(norm_i,x_j.get_shape()[0])
+                                        if x_j.dtype is not norm_i.dtype:
+                                            norm_i = tf.cast(norm_i,x_j.dtype)
+                                        out = tf.reshape(norm_i,[-1, 1, 1]) * tf.reshape(x_j,[-1, H, F])
+
+                                        if alpha is not None:
+                                            out = tf.reshape(alpha,[-1, self.heads, 1]) * out
+
+                                        return out
+
+
+                            # Implementation
+                            """"
+                            in_channels, out_channels = (16, 32)
+                            hyperedge_index = tf.constant([[0, 0, 1, 1, 2, 3], [0, 1, 0, 1, 0, 1]])
+                            hyperedge_weight = tf.constant([1.0, 0.5])
+                            num_nodes = int(tf.reduce_max(hyperedge_index[0])) + 1
+                            num_edges = int(tf.reduce_max(hyperedge_index[1])) + 1
+                            x = tf.random.normal(([num_nodes, in_channels]))
+                            hyperedge_attr = tf.random.normal(([num_edges, in_channels]))
+
+                            conv = HypergraphConv(in_channels, out_channels)
+
+                            out = conv(x, hyperedge_index)
+
+                            out = conv(x, hyperedge_index, hyperedge_weight)
+
+
+                            conv = HypergraphConv(in_channels, out_channels, use_attention=True,
+                                                      heads=2)
+                            out = conv(x, hyperedge_index, hyperedge_attr=hyperedge_attr)
+
+                            out = conv(x, hyperedge_index, hyperedge_weight, hyperedge_attr)
+
+                            conv = HypergraphConv(in_channels, out_channels, use_attention=True,
+                                                      heads=2, concat=False, dropout=0.5)
+                            out = conv(x, hyperedge_index, hyperedge_weight, hyperedge_attr)
+"""
+
+
+                                  </code>
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p>The hypergraph convolutional operator from the <a href="https://arxiv.org/abs/1901.08150" target="_blank">“Hypergraph Convolution and Hypergraph Attention"</a> paper</p>
+                  <img class = "equationclass" src="assets/images/equation/hyper_graph.PNG" alt="">
+                  <p>where <strong>H &isin; {0, 1}<sup>NxM</sup></strong> is the incidence matrix, <strong>W &isin;R<sup>M</sup></strong>is the diagonal hyperedge weight matrix, and <strong>D</strong> and <strong>B</strong> are the corresponding degree matrices.</p>
+                </div>
+                <dl class="field-list simple">
+                  <dt class="field-odd">
+                    <h4><strong>Parameters</strong></h4>
+                  </dt>
+                  <dd class="field-odd">
+                    <ul class="simple_parameter">
+                      <li>
+                        <p><strong>in_channels   </strong>
+                          – Size of each input sample, or <mark>-1</mark> to derive the size from the first input(s) to the forward method. A tuple corresponds to the sizes of source and target dimensionalities.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>out_channels    </strong>
+                          – Size of each output sample.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>use_attention   </strong>
+                          – If set to <mark>True</mark>, attention will be added to this layer. 
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>heads  </strong>
+                          – Number of multi-head-attentions.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>concat </strong>
+                          – If set to <mark>False</mark>, the multi-head attentions are averaged instead of concatenated. 
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>negative_slope  </strong>
+                          – LeakyReLU angle of the negative slope.  
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>dropout   </strong>
+                          –  Dropout probability of the normalized attention coefficients which exposes each node to a stochastically sampled neighborhood during training.
+                      </p>
+                      </li>
+                      <li>
+                        <p><strong>bias   </strong>
+                          – If set to <mark>False</mark>, the layer will not learn an additive bias.
+                      </p>
+                      </li>
+                    </ul>
+                  </dd>
+                </dl>
+                <div>
+                  <pre class="classes">
+                    <code>
+                      <p>class <span class="className" id="wl_cont_conv">WLConvContinuous</span>( **kwargs)</p>
+                    </code>
+                    <span class="preSource" data-toggle="modal" data-target="#wl_cont_conv_code">[source]</span>
+                  </pre>
+                </div>
+                <div class="modal fade" id="wl_cont_conv_code" tabindex="-1" role="dialog" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered" role="document">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="exampleModalLongTitle"><strong>SOURCE CODE FOR WL_CONV_CONTINUOUS</strong></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre>
+                          <code>  
+                            import tensorflow as tf
+                            from typing import Union
+                            from message_passing import MessagePassing
+                            from Scatter import scatter_add
+                            from tf_typing import OptPairTensor, OptTensor,Size 
+                            import numpy as np
+
+                            def masked_fill(t, mask, value):
+                                return tf.cast(t,dtype=tf.float32) * (1 - tf.cast(mask, tf.float32)) + value * tf.cast(mask, tf.float32)
+
+                            class WLConvContinuous(MessagePassing):
+                                def __init__(self, **kwargs):
+                                    super().__init__(aggr='add', **kwargs)
+
+                                def __call__(self, x: Union[tf.Tensor, OptPairTensor], edge_index: tf.Tensor,
+                                            edge_weight: OptTensor = None, size: Size = None) -> tf.Tensor:
+                                    """"""
+                                    if isinstance(x, tf.Tensor):
+                                        x: OptPairTensor = (x, x)
+
+                                    if edge_weight is None:
+                                        edge_weight = tf.ones(edge_index.get_shape()[1], dtype = x[0].dtype)
+
+                                    # propagate_type: (x: OptPairTensor, edge_weight: Tensor)
+                                    out = self.propagate(edge_index, x=x, edge_weight=edge_weight,
+                                                        size=size)
+                                    
+                                    out = tf.constant(out, dtype=tf.float32)
+                                    deg = scatter_add(edge_weight, edge_index[1],dim=0, dim_size=out.get_shape()[0])
+                                    deg_inv = 1. / deg
+                                    deg_inv = masked_fill(deg_inv,deg_inv == float('inf'), 0)
+                                    deg_inv = deg_inv.numpy()
+                                    deg_inv[np.isnan(deg_inv)] = 0
+                                    deg_inv = tf.constant(deg_inv)
+                                  
+                                    out = tf.reshape(deg_inv,[-1, 1]) * out
+
+                                    x_dst = x[1]
+                                    if x_dst is not None:
+                                        if x_dst.dtype is not out.dtype:
+                                            x_dst = tf.cast(x_dst, dtype=out.dtype)
+                                        out = 0.5 * (x_dst + out)
+
+                                    return out
+
+                                def message(self, x_j: tf.Tensor, edge_weight: tf.Tensor) -> tf.Tensor:
+                                    return tf.reshape(edge_weight,[-1, 1]) * x_j
+
+
+
+                            #Implementation
+                            """
+                            w = WLConvContinuous()
+
+                            edge_index = tf.constant([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=tf.int64)
+                            x = tf.constant([[-1], [0], [1]], dtype=tf.float32)
+                            out = w(x,edge_index)
+                            print(out)
+
+
+                            x1 = tf.random.normal([4, 8])
+                            x2 = tf.random.normal([2, 8])
+                            edge_index = tf.constant([[0, 1, 2, 3], [0, 0, 1, 1]])
+                            edge_weight = tf.random.normal([edge_index.get_shape()[1]])
+
+                            out = w((x1, None), edge_index, edge_weight, size=(4, 2))
+                            print(out)
+
+                            out = w((x1, x2), edge_index, edge_weight)
+                            print(out)
+
+                            """
+
+                                  </code>
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <p>The Weisfeiler Lehman operator from the <a href="https://arxiv.org/abs/1906.01277" target="_blank">“Wasserstein Weisfeiler-Lehman Graph Kernels"</a> paper. Refinement is done though a degree-scaled mean aggregation and works on nodes with continuous attributes:</p>
+                  <img class = "equationclass" src="assets/images/equation/wl_cont.PNG" alt="">
+                  <p>where <strong>e<sub>j,i</sub></strong> denotes the edge weight from source node <mark>j</mark> to target node <mark>i</mark></p>
+                </div>
+                
                
             
           </section>
@@ -7142,8 +7772,6 @@
                             from tf_softmax import softmax
                             from tf_topk import tf_topk
                             from filter_adj_tensorflow import filter_adj
-
-
 
                             class TopKPooling(tf.keras.layers.Layer):
                                 def __init__(self, in_channels: int, ratio:float= 0.5,min_score:float= None, multiplier: float = 1., nonlinearity= tf.math.tanh):
